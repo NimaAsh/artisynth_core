@@ -23,6 +23,7 @@ public abstract class ModelBase extends OpenSimObject implements ModelComponentG
    
    // private ConstraintSet constraintSet;
    private MarkerSet markerSet;
+   private ObjectGroupSet objectGroupSet;
    
    // private ContactGeometrySet contactGeometrySet;
    // private ControllerSet controllerSet;
@@ -42,6 +43,7 @@ public abstract class ModelBase extends OpenSimObject implements ModelComponentG
       forceSet = null;
       constraintSet = null;
       markerSet = null;
+      objectGroupSet = null;
    }
    
    /**
@@ -144,6 +146,15 @@ public abstract class ModelBase extends OpenSimObject implements ModelComponentG
       this.markerSet.setParent (this);
    }
 
+   public ObjectGroupSet getObjectGroupSet () {
+      return objectGroupSet;
+   }
+
+   public void setObjectGroupSet (ObjectGroupSet objectGroupSet) {
+      this.objectGroupSet = objectGroupSet;
+      this.objectGroupSet.setParent (this);
+   }
+
    @Override
    public ModelBase clone () {
       ModelBase model = (ModelBase) super.clone ();
@@ -159,6 +170,9 @@ public abstract class ModelBase extends OpenSimObject implements ModelComponentG
       }
       if (markerSet != null) {
          model.setMarkerSet (markerSet.clone ());
+      }
+      if (objectGroupSet != null) {
+         model.setObjectGroupSet (objectGroupSet.clone ());
       }
       
       return model;

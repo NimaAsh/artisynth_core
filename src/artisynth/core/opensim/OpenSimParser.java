@@ -28,6 +28,7 @@ import artisynth.core.opensim.components.OpenSimDocument;
 import artisynth.core.opensim.components.OpenSimObjectFactory;
 import artisynth.core.opensim.components.OpenSimObjectFactoryStore;
 import artisynth.core.opensim.components.RigidBodyOsim;
+import artisynth.core.opensim.components.ObjectGroupSet;
 import maspack.render.*;
 import maspack.render.Renderer.*;
 
@@ -55,6 +56,10 @@ public class OpenSimParser {
    ModelComponentMap myComponentMap;
    public static boolean myIgnoreFrameGeometry = true;
    public static boolean myFrameGeometryVisible = false;
+
+   // ObjectGroup functionality fields
+   private static boolean myCreateObjectGroupExciters = false;
+   private static boolean mySeparateLeftRightExciters = true;
 
    /**
     * Creates a new parser
@@ -128,6 +133,46 @@ public class OpenSimParser {
    static public boolean getMusclesContainPathPoints() {
       return myMusclesContainPathPoints;
    }
+
+   /**
+    * Sets whether to automatically create muscle exciters based on ObjectGroup tags
+    * in the OpenSim file. Default is false.
+    * 
+    * @param enable if true, create muscle exciters from ObjectGroups
+    */
+   public static void setCreateObjectGroupExciters(boolean enable) {
+      myCreateObjectGroupExciters = enable;
+   }
+   
+   /**
+    * Returns whether muscle exciters are created from ObjectGroup tags.
+    * 
+    * @return true if ObjectGroup exciters are created
+    */
+   public static boolean getCreateObjectGroupExciters() {
+      return myCreateObjectGroupExciters;
+   }
+
+   /**
+    * Sets whether to separate left/right exciters for ObjectGroup-based muscle
+    * exciters. Default is true.
+    * 
+    * @param enable if true, separate left/right exciters
+    */
+   public static void setSeparateLeftRightExciters(boolean enable) {
+      mySeparateLeftRightExciters = enable;
+   }
+   
+   /**
+    * Returns whether left/right exciters are separated for ObjectGroup-based
+    * muscle exciters.
+    * 
+    * @return true if left/right exciters are separated
+    */
+   public static boolean getSeparateLeftRightExciters() {
+      return mySeparateLeftRightExciters;
+   }
+
 
    private void parseOSimFile() {
       // get factory 
@@ -238,6 +283,12 @@ public class OpenSimParser {
       mech = model.createModel (mech, geometryDir, myComponentMap);
       myMech = mech;
       setAppropriateDefaults();
+      
+      // Create ObjectGroup exciters if enabled
+      if (myCreateObjectGroupExciters) {
+         createObjectGroupExciters();
+      }
+      
       return mech;
    }
 
@@ -723,6 +774,71 @@ public class OpenSimParser {
    }
 
    /**
+    * Creates muscle exciters from ObjectGroups found in the model.
+    * This follows the standard OpenSim parser pattern by accessing
+    * components that were created by the factory system.
+    */
+   public List<MuscleExciter> createObjectGroupExciters() {
+      checkForMechModel();
+      
+      ObjectGroupSet groupSet = getObjectGroupSet();
+      if (groupSet != null) {
+         return groupSet.createMuscleExciters(myMech, myComponentMap,
+            mySeparateLeftRightExciters);
+      } else {
+         return new ArrayList<>();
+      }
+   }
+
+   /**
+    * Returns the {@code ObjectGroupSet} from the document hierarchy.
+    * ObjectGroups are stored as metadata in the OpenSim model.
+    *
+    * @return ObjectGroupSet, or {@code null} if not present.
+    */
+   public ObjectGroupSet getObjectGroupSet() {
+      if (myDocument == null) {
+         return null;
+      }
+      
+      ModelBase model = myDocument.getModel();
+      if (model != null) {
+         return model.getObjectGroupSet();
+      }
+      return null;
+   }
+   
+   /**
+    * Finds a specific ObjectGroup by name.
+    *
+    * @param name name of the ObjectGroup
+    * @return ObjectGroup, or {@code null} if not found
+    */
+   public artisynth.core.opensim.components.ObjectGroup findObjectGroup(String name) {
+      ObjectGroupSet groupSet = getObjectGroupSet();
+      if (groupSet != null) {
+         return groupSet.findObjectGroup(name);
+      }
+      return null;
+   }
+   
+   /**
+    * Returns a list of all ObjectGroups in the model.
+    *
+    * @return list of ObjectGroups
+    */
+   public ArrayList<artisynth.core.opensim.components.ObjectGroup> getObjectGroups() {
+      ArrayList<artisynth.core.opensim.components.ObjectGroup> list = new ArrayList<>();
+      ObjectGroupSet groupSet = getObjectGroupSet();
+      if (groupSet != null) {
+         for (artisynth.core.opensim.components.ObjectGroup group : groupSet.objects()) {
+            list.add(group);
+         }
+      }
+      return list;
+   }
+
+   /**
     * Convenience method to zero the excitations of all muscle
     * components located beneath the {@code "forceset"}. This is
     * useful when a newly loaded model contains small bias excitations.
@@ -850,8 +966,27 @@ public class OpenSimParser {
       ControlPanel panel = new ControlPanel();
       panel.setName ("excitations");
       for (MuscleComponent muscle : getMuscles()) {
-         if (nameSet.contains (muscle.getName())) {
+         if (nameSet.contains(muscle.getName())) {
             panel.addWidget (muscle.getName(), muscle, "excitation");
+         }
+      }
+      return panel;
+   }
+
+   /**
+    * Creates a control panel for ObjectGroup-based muscle exciters.
+    *
+    * @return created panel
+    */
+   public ControlPanel createObjectGroupExciterPanel() {
+      ControlPanel panel = new ControlPanel();
+      panel.setName ("objectgroup_exciters");
+      
+      checkForMechModel();
+      for (MuscleExciter exciter : myMech.getMuscleExciters()) {
+         // Check if this exciter was created from an ObjectGroup
+         if (findObjectGroup(exciter.getName()) != null) {
+            panel.addWidget (exciter.getName(), exciter, "excitation");
          }
       }
       return panel;

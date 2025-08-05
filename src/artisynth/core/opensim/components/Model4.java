@@ -163,6 +163,20 @@ public class Model4 extends ModelBase {
          forceSet.createComponent(geometryPath, componentMap);
       mech.add (forces);
       
+      // Extract ObjectGroups from ForceSet and create ObjectGroupSet
+      if (forceSet != null) {
+         ObjectGroupSet objectGroupSet = new ObjectGroupSet();
+         for (ObjectGroup group : forceSet.groups()) {
+            if (group instanceof ObjectGroup) {
+               objectGroupSet.add(group.clone());
+            }
+         }
+         if (objectGroupSet.size() > 0) {
+            // Set ObjectGroupSet on the model
+            this.setObjectGroupSet(objectGroupSet);
+         }
+      }
+      
       // constrainers
       ConstraintSet constraintSet = this.getConstraintSet ();
       ComponentList<ConstrainerBase> constraints =
@@ -174,6 +188,9 @@ public class Model4 extends ModelBase {
       PointList<Marker> markers =
          markerSet.createComponent(geometryPath, componentMap);
       mech.add (markers);
+      
+      // object groups (stored as metadata)
+      // ObjectGroups are metadata and will be accessed through the document hierarchy
       
       // set gravity
       Vector3d gravity = this.getGravity ();
