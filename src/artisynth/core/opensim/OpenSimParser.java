@@ -17,10 +17,8 @@ import artisynth.core.mechmodels.RigidBody;
 import artisynth.core.mechmodels.JointBase;
 import artisynth.core.modelbase.ModelComponent;
 import artisynth.core.modelbase.*;
-import artisynth.core.util.ArtisynthPath;
 import artisynth.core.gui.ControlPanel;
 import artisynth.core.gui.CoordinatePanel;
-import artisynth.core.opensim.components.ForceSpringBase;
 import artisynth.core.opensim.components.MultiPointMuscleOsim;
 import artisynth.core.opensim.components.ModelBase;
 import artisynth.core.opensim.components.ModelComponentMap;
@@ -283,6 +281,9 @@ public class OpenSimParser {
       mech = model.createModel (mech, geometryDir, myComponentMap);
       myMech = mech;
       setAppropriateDefaults();
+      // Materialize ObjectGroups as ReferenceLists under a top-level
+      // container so groups can reference arbitrary components
+      createObjectGroupReferenceLists();
       
       // Create ObjectGroup exciters if enabled
       if (myCreateObjectGroupExciters) {
@@ -290,6 +291,154 @@ public class OpenSimParser {
       }
       
       return mech;
+   }
+
+   /**
+    * Ensures a top-level container {@code objectgroups} exists on the
+    * {@code MechModel} and populates it with {@code ReferenceList}s that
+    * mirror the OpenSim {@code ObjectGroup}s stored as metadata. Each
+    * {@code ReferenceList} will contain references to the resolved
+    * {@code ModelComponent}s (muscles, markers, bodies, joints, etc.)
+    * matching the names listed in the corresponding {@code ObjectGroup}.
+    * If the container already exists, it is cleared and repopulated.
+    */
+   public List<ReferenceList<ModelComponent>> createObjectGroupReferenceLists() {
+      checkForMechModel();
+      ArrayList<ReferenceList<ModelComponent>> created = new ArrayList<>();
+
+      ObjectGroupSet groupSet = getObjectGroupSet();
+      if (groupSet == null) {
+         return created;
+      }
+
+      // Get or create the top-level container
+      @SuppressWarnings("unchecked")
+      ComponentList<ModelComponent> groupContainer =
+         (ComponentList<ModelComponent>)myMech.get("objectgroups");
+      if (groupContainer == null) {
+         groupContainer = new ComponentList<>(ModelComponent.class, "objectgroups");
+         myMech.add(groupContainer);
+      } else {
+         groupContainer.removeAll();
+      }
+
+      // Build a name->component(s) index for robust resolution
+      HashMap<String,ArrayList<ModelComponent>> nameToComponents =
+         new HashMap<>();
+      ArrayList<ModelComponent> allComponents = new ArrayList<>();
+      myMech.recursivelyFind(allComponents, ModelComponent.class);
+      for (ModelComponent comp : allComponents) {
+         String cname = comp.getName();
+         if (cname == null || cname.length() == 0) {
+            continue;
+         }
+         ArrayList<ModelComponent> list = nameToComponents.get(cname);
+         if (list == null) {
+            list = new ArrayList<>();
+            nameToComponents.put(cname, list);
+         }
+         list.add(comp);
+      }
+
+      for (artisynth.core.opensim.components.ObjectGroup og : groupSet.objects()) {
+         ReferenceList<ModelComponent> refList = new ReferenceList<>(og.getName());
+
+         // Resolve and add references for each member name
+         for (String memberName : og.getMembers()) {
+            ModelComponent target = resolveGroupMember(memberName, nameToComponents);
+            if (target != null) {
+               refList.addReference(target);
+            }
+         }
+
+         groupContainer.add(refList);
+         created.add(refList);
+      }
+
+      return created;
+   }
+
+   // Prefer components within well-known containers when multiple components
+   // share the same name. Fall back to the first.
+   private ModelComponent resolveGroupMember (
+      String name, HashMap<String,ArrayList<ModelComponent>> nameToComponents) {
+
+      ArrayList<ModelComponent> candidates = nameToComponents.get(name);
+      if (candidates == null || candidates.isEmpty()) {
+         return null;
+      }
+
+      if (candidates.size() == 1) {
+         return candidates.get(0);
+      }
+
+      // Heuristic preference order for disambiguation
+      String[] preferredRoots = new String[] {
+         "forceset/", // muscles/springs
+         "markerset/",
+         "bodyset/",
+         "jointset/",
+         "constraintset/"
+      };
+
+      for (String root : preferredRoots) {
+         for (ModelComponent c : candidates) {
+            String path = ComponentUtils.getPathName(myMech, c);
+            if (path != null && path.startsWith(root)) {
+               return c;
+            }
+         }
+      }
+      // Fallback: first candidate
+      return candidates.get(0);
+   }
+
+   /**
+    * Returns the top-level {@code objectgroups} container, if present.
+    */
+   public ComponentList<ModelComponent> getObjectGroupContainer() {
+      checkForMechModel();
+      @SuppressWarnings("unchecked")
+      ComponentList<ModelComponent> groupContainer =
+         (ComponentList<ModelComponent>)myMech.get("objectgroups");
+      return groupContainer;
+   }
+
+   /**
+    * Returns all {@code ReferenceList}s within the {@code objectgroups}
+    * container, or an empty list if none.
+    */
+   public List<ReferenceList<ModelComponent>> getObjectGroupReferenceLists() {
+      ArrayList<ReferenceList<ModelComponent>> out = new ArrayList<>();
+      ComponentList<ModelComponent> container = getObjectGroupContainer();
+      if (container == null) {
+         return out;
+      }
+      for (ModelComponent mc : container) {
+         if (mc instanceof ReferenceList) {
+            @SuppressWarnings("unchecked")
+            ReferenceList<ModelComponent> rl = (ReferenceList<ModelComponent>)mc;
+            out.add(rl);
+         }
+      }
+      return out;
+   }
+
+   /**
+    * Finds a specific ObjectGroup's {@code ReferenceList} by name.
+    */
+   public ReferenceList<ModelComponent> findObjectGroupReferenceList(String name) {
+      ComponentList<ModelComponent> container = getObjectGroupContainer();
+      if (container == null) {
+         return null;
+      }
+      ModelComponent mc = container.get(name);
+      if (mc instanceof ReferenceList) {
+         @SuppressWarnings("unchecked")
+         ReferenceList<ModelComponent> rl = (ReferenceList<ModelComponent>)mc;
+         return rl;
+      }
+      return null;
    }
 
    protected void setAppropriateDefaults () {
