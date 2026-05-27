@@ -605,6 +605,9 @@ public class ArtisynthPath {
       Class<?> cls =
          (classObj instanceof Class ? (Class<?>)classObj : classObj.getClass());
       String srcPath = getSrcPath (cls, /*root=*/false);
+      if (srcPath == null) {
+         return null;
+      }
       if (relpath != null) {
          srcPath += File.separatorChar + relpath;
       }

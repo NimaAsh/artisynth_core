@@ -542,6 +542,23 @@ public abstract class EquilibriumAxialMuscle extends AxialMuscleMaterialBase
       return myMaxIsoForce*computeTendonForce (ltn);
    }
 
+   /**
+    * Computes the muscle tension (in N) for a given activation while holding
+    * the fiber length fixed at its current value, i.e. <i>without</i>
+    * re-solving the fiber/tendon equilibrium. This is the linearization used
+    * by OpenSim's static optimization, where the fiber kinematics are frozen
+    * at the current state and tension is treated as (very nearly) affine in
+    * activation. For a static posture (zero fibre velocity) the force-velocity
+    * factor is unity and the result is exactly affine in {@code activation}.
+    *
+    * @param activation muscle activation
+    * @return muscle tension in N at the current (frozen) fiber length
+    */
+   public double computeFrozenFiberTension (double activation) {
+      return myMaxIsoForce*computeFm (
+         null, myMuscleLength, myMuscleVel, activation, myH);
+   }
+
    private class GFunctionWithVmFromLm implements Diff1Function1x1 {
       double myL;
       double myLDot;
